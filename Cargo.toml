@@ -1,0 +1,10 @@
+[package]
+name = "linux-bluetooth-sync"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Sync dual-boot Windows Bluetooth bonds into BlueZ"
+
+[[bin]]
+name = "bls"
+path = "src/main.rs"

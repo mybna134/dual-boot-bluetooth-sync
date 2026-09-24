@@ -1,0 +1,66 @@
+name: Build and release packages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install package tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+      - name: Test
+        run: cargo test --locked
+      - name: Build DEB, RPM, release archive, and AUR recipe
+        id: build
+        run: |
+          version="$(date -u +%Y%m%d%H%M%S).${GITHUB_RUN_NUMBER}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          BLS_PACKAGE_VERSION="$version" scripts/package.sh "$GITHUB_REPOSITORY"
+      - name: Upload packages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bluetooth-sync-packages
+          path: |
+            dist/*.deb
+            dist/linux-bluetooth-sync-[0-9]*.rpm
+            dist/bls-v*.tar.gz
+            dist/linux-bluetooth-sync-bin-*-aur.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: packages
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-bluetooth-sync-packages
+          path: dist
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.packages.outputs.version }}
+        run: gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --generate-notes
+      - name: Delete temporary workflow artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.packages.outputs.artifact_id }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID"

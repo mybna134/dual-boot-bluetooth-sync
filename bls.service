@@ -1,0 +1,12 @@
+[Unit]
+Description=Synchronize Windows Bluetooth bonds into BlueZ
+Documentation=https://wiki.archlinux.org/title/Bluetooth#Dual_boot_pairing
+After=local-fs.target
+ConditionPathExists=/etc/bls.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bls sync
+
+[Install]
+WantedBy=multi-user.target
