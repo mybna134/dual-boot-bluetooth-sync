@@ -1,6 +1,14 @@
-# Dual Boot Bluetooth Sync
-
-[English](README.en.md) | 简体中文
+<div align="center">
+  <h1>Dual Boot Bluetooth Sync</h1>
+  <a href="https://github.com/mybna134/dual-boot-bluetooth-sync/releases/latest"><img src="https://img.shields.io/github/v/release/mybna134/dual-boot-bluetooth-sync?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest release"></a>
+  <a href="https://github.com/mybna134/dual-boot-bluetooth-sync/actions/workflows/packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/mybna134/dual-boot-bluetooth-sync/packages.yml?branch=main&style=for-the-badge&label=Build&logo=githubactions" alt="GitHub Actions build status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mybna134/dual-boot-bluetooth-sync?style=for-the-badge&logo=github" alt="License"></a>
+  <img src="https://img.shields.io/badge/Rust-Edition%202021-orange?style=for-the-badge&logo=rust" alt="Rust edition 2021">
+  <img src="https://img.shields.io/badge/BlueZ-Required-blue?style=for-the-badge&logo=bluetooth" alt="BlueZ required">
+  <br>
+  <a href="README.en.md"><img src="https://img.shields.io/badge/Language-English-0A66C2?style=for-the-badge" alt="English"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/Language-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-0A66C2?style=for-the-badge" alt="简体中文"></a>
+</div>
 
 `bls` 用于将 Windows 双系统中的蓝牙配对密钥和设备信息同步到 Linux 的 BlueZ。它读取未挂载的 Windows `SYSTEM` 注册表配置单元，并将数据写入对应的 BlueZ 适配器目录。
 
