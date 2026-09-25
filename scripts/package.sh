@@ -58,6 +58,37 @@ install -m 0644 "$project_dir/LICENSE" "$release_dir/LICENSE"
 install -m 0644 "$project_dir/vendor/ntreg/LGPL.txt" "$release_dir/NTREG-LGPL.txt"
 tar -C "$work_dir" -czf "$output_dir/$release_name.tar.gz" "$release_name"
 
+archive_hash=$(sha256sum "$output_dir/$release_name.tar.gz" | awk '{print $1}')
+if command -v makepkg >/dev/null; then
+  pacman_dir="$work_dir/pacman"
+  mkdir -p "$pacman_dir"
+  cp "$output_dir/$release_name.tar.gz" "$pacman_dir/"
+  cat > "$pacman_dir/PKGBUILD" <<EOF
+pkgname=dual-boot-bluetooth-sync
+pkgver=$arch_pkgver
+pkgrel=1
+pkgdesc='Synchronize Windows Bluetooth bonds and metadata into BlueZ'
+arch=('$rpm_arch')
+url='https://github.com/$repository'
+license=('GPL-3.0-only' 'LGPL-2.1-only')
+options=('!debug')
+depends=('bluez' 'systemd' 'util-linux')
+source=("$release_name.tar.gz")
+sha256sums=('$archive_hash')
+
+package() {
+  install -Dm0755 "\$srcdir/$release_name/bls" "\$pkgdir/usr/bin/bls"
+  install -Dm0644 "\$srcdir/$release_name/bls.service" "\$pkgdir/usr/lib/systemd/system/bls.service"
+  install -Dm0644 "\$srcdir/$release_name/README.md" "\$pkgdir/usr/share/doc/dual-boot-bluetooth-sync/README.md"
+  install -Dm0644 "\$srcdir/$release_name/README.en.md" "\$pkgdir/usr/share/doc/dual-boot-bluetooth-sync/README.en.md"
+  install -Dm0644 "\$srcdir/$release_name/LICENSE" "\$pkgdir/usr/share/licenses/dual-boot-bluetooth-sync/LICENSE"
+  install -Dm0644 "\$srcdir/$release_name/NTREG-LGPL.txt" "\$pkgdir/usr/share/licenses/dual-boot-bluetooth-sync/NTREG-LGPL.txt"
+}
+EOF
+  (cd "$pacman_dir" && makepkg --nodeps --noconfirm --clean --cleanbuild)
+  find "$pacman_dir" -maxdepth 1 -type f -name 'dual-boot-bluetooth-sync-*.pkg.tar.*' -exec cp -- '{}' "$output_dir/" \;
+fi
+
 package_root="$work_dir/deb-root"
 install -Dm0755 "$release_dir/bls" "$package_root/usr/bin/bls"
 install -Dm0644 "$release_dir/bls.service" "$package_root/usr/lib/systemd/system/bls.service"
@@ -124,7 +155,6 @@ EOF
 rpmbuild -bb --define "_topdir $rpm_top" --define "_dbpath $work_dir/rpmdb" "$rpm_top/SPECS/dual-boot-bluetooth-sync.spec"
 find "$rpm_top/RPMS" -type f -name 'dual-boot-bluetooth-sync-[0-9]*.rpm' -exec cp -- '{}' "$output_dir/" \;
 
-archive_hash=$(sha256sum "$output_dir/$release_name.tar.gz" | awk '{print $1}')
 aur_dir="$work_dir/aur-bin"
 mkdir -p "$aur_dir"
 cat > "$aur_dir/PKGBUILD" <<EOF
