@@ -4226,15 +4226,16 @@ struct hive *openHive(char *filename, int mode)
   ALLOC(hdesc->buffer,1,hdesc->size);
 
   rt = 0;
-  do {  /* On some platforms read may not block, and read in chunks. handle that */
+  while (rt < hdesc->size) {
     r = read(hdesc->filedesc, hdesc->buffer + rt, hdesc->size - rt);
+    if (r < 0) {
+      if (errno == EINTR) continue;
+      perror("openHive(): read error: ");
+      closeHive(hdesc);
+      return(NULL);
+    }
+    if (r == 0) break;
     rt += r;
-  } while ( !errno && (rt < hdesc->size) );
-
-  if (errno) { 
-    perror("openHive(): read error: ");
-    closeHive(hdesc);
-    return(NULL);
   }
   if (rt < hdesc->size) {
     fprintf(stderr,"Could not read file, got %d bytes while expecting %d\n",
@@ -4360,4 +4361,3 @@ struct hive *openHive(char *filename, int mode)
    return(hdesc);
 
 }
-
