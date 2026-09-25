@@ -29,6 +29,23 @@ jobs:
           version="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short=12 "$GITHUB_SHA")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           BLS_PACKAGE_VERSION="$version" scripts/package.sh "$GITHUB_REPOSITORY"
+      - name: Build pacman package in Arch Linux
+        env:
+          BLS_PACKAGE_VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          docker run --rm \
+            --env BLS_PACKAGE_VERSION \
+            --env GITHUB_REPOSITORY \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            archlinux:base-devel bash -euc '
+              pacman -Syu --noconfirm --needed cargo dpkg rpm-tools git
+              runner_uid=$(stat -c %u /workspace)
+              useradd --uid "$runner_uid" --create-home builder
+              runuser -u builder -- env \
+                BLS_PACKAGE_VERSION="$BLS_PACKAGE_VERSION" \
+                scripts/package.sh "$GITHUB_REPOSITORY"
+            '
       - name: Upload packages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         id: upload
@@ -37,6 +54,7 @@ jobs:
           name: linux-bluetooth-sync-packages
           path: |
             dist/*.deb
+            dist/*.pkg.tar.zst
             dist/linux-bluetooth-sync-[0-9]*.rpm
             dist/bls-v*.tar.gz
             dist/linux-bluetooth-sync-bin-*-aur.tar.gz
