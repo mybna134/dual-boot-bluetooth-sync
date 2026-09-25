@@ -6,6 +6,9 @@ use std::os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod registry;
+use registry::Hive;
+
 type Result<T> = std::result::Result<T, String>;
 type Registry = BTreeMap<String, BTreeMap<String, RegValue>>;
 
@@ -42,7 +45,7 @@ Run 'bls COMMAND --help' for command options.
 
 Run as root for config changes, info, and sync. "bls config" shows settings.
 Sync mounts the Windows partition read-only, unmounts it, then restarts
-bluetooth.service. Requires reged (chntpw package).
+bluetooth.service. Reads the Windows SYSTEM hive directly.
 Default mount point: /mnt/blsTemp; BlueZ root: /var/lib/bluetooth.
 Classic Type is preserved from existing BlueZ info. New Classic devices
 default to SSP unauthenticated (Type=4); set an override for Legacy/SC.
@@ -195,9 +198,12 @@ fn parse_mount_config(data: &str) -> Result<MountConfig> {
     let mut lines = data.lines();
     let device = lines.next().ok_or("missing device in bls.conf")?;
     let mount_point = lines.next().ok_or("missing mount point in bls.conf")?;
-    let bluez_root = lines.next().unwrap_or("/var/lib/bluetooth");
+    let bluez_root = lines.next().ok_or("missing BlueZ root in bls.conf")?;
     if lines.next().is_some()
-        || (!device.is_empty() && (!device.starts_with("/dev/") || device.len() <= "/dev/".len()))
+        || (!device.is_empty()
+            && (!device.starts_with("/dev/")
+                || device.len() <= "/dev/".len()
+                || device.starts_with("/dev/disk/by-uuid/")))
         || device.chars().any(|c| c == '\r' || c == '\n')
         || !Path::new(mount_point).is_absolute()
         || !Path::new(bluez_root).is_absolute()
@@ -405,77 +411,6 @@ fn unmount_windows(config: &MountConfig) -> Result<()> {
         return Err(format!("unmount failed: {status}"));
     }
     Ok(())
-}
-
-fn export(hive: &Path, key: &str) -> Result<Registry> {
-    let output = Command::new("reged")
-        .arg("-x")
-        .arg(hive)
-        .arg("HKEY_LOCAL_MACHINE\\SYSTEM")
-        .arg(key)
-        .arg("/dev/stdout")
-        .output()
-        .map_err(|e| format!("cannot run reged (install chntpw): {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "reged failed exporting {key}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    let data = String::from_utf8(output.stdout).map_err(|_| "reged output is not UTF-8")?;
-    parse_reg(&data)
-}
-
-fn parse_reg(input: &str) -> Result<Registry> {
-    let mut result = Registry::new();
-    let mut section = String::new();
-    let mut pending = String::new();
-    for line in input.lines() {
-        let line = line.trim().trim_end_matches('\r');
-        if line.starts_with('[') && line.ends_with(']') {
-            section = line[1..line.len() - 1].to_ascii_lowercase();
-            result.entry(section.clone()).or_default();
-            continue;
-        }
-        if !line.starts_with('"') && pending.is_empty() {
-            continue;
-        }
-        let continuation = line.ends_with('\\');
-        pending.push_str(line.trim_end_matches('\\').trim());
-        if continuation {
-            continue;
-        }
-        if let Some((name, value)) = pending.strip_prefix('"').and_then(|s| s.split_once("\"=")) {
-            let parsed = if let Some(n) = value.strip_prefix("dword:") {
-                u32::from_str_radix(n, 16).ok().map(RegValue::Dword)
-            } else if let Some(bytes) = value
-                .strip_prefix("hex(b):")
-                .or_else(|| value.strip_prefix("hex:"))
-            {
-                let mut out = Vec::new();
-                for piece in bytes.split(',') {
-                    if piece.is_empty() {
-                        continue;
-                    }
-                    out.push(
-                        u8::from_str_radix(piece.trim(), 16)
-                            .map_err(|_| "invalid REG_BINARY data")?,
-                    );
-                }
-                Some(RegValue::Bytes(out))
-            } else {
-                None
-            };
-            if let Some(value) = parsed {
-                result
-                    .entry(section.clone())
-                    .or_default()
-                    .insert(name.to_ascii_lowercase(), value);
-            }
-        }
-        pending.clear();
-    }
-    Ok(result)
 }
 
 fn bytes<'a>(values: &'a BTreeMap<String, RegValue>, name: &str, len: usize) -> Option<&'a [u8]> {
@@ -898,7 +833,8 @@ fn restart_bluetooth() -> Result<()> {
 fn sync_files(options: Options, windows_root: &Path) -> Result<()> {
     let hive = windows_root.join("Windows/System32/config/SYSTEM");
     File::open(&hive).map_err(|e| format!("{}: {e}", hive.display()))?;
-    let select = export(&hive, "Select")?;
+    let hive = Hive::open(&hive)?;
+    let select = hive.read_tree("Select")?;
     let current = select
         .values()
         .find_map(|v| dword(v, "Current"))
@@ -910,10 +846,9 @@ fn sync_files(options: Options, windows_root: &Path) -> Result<()> {
         "hkey_local_machine\\system\\ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Keys"
     )
     .to_ascii_lowercase();
-    let registry = export(
-        &hive,
-        &format!("ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Keys"),
-    )?;
+    let registry = hive.read_tree(&format!(
+        "ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Keys"
+    ))?;
     if !registry.contains_key(&prefix) {
         return Err("Windows BTHPORT Keys registry path not found".into());
     }
@@ -921,10 +856,9 @@ fn sync_files(options: Options, windows_root: &Path) -> Result<()> {
         "hkey_local_machine\\system\\ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Devices"
     )
     .to_ascii_lowercase();
-    let devices = match export(
-        &hive,
-        &format!("ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Devices"),
-    ) {
+    let devices = match hive.read_tree(&format!(
+        "ControlSet{current:03}\\Services\\BTHPORT\\Parameters\\Devices"
+    )) {
         Ok(data) => data,
         Err(e) => {
             eprintln!("bls: device metadata unavailable: {e}");
@@ -1170,33 +1104,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_reads_old_and_new_bluez_root_formats() {
-        let old = parse_mount_config("/dev/disk/by-uuid/ABCD\n/mnt/blsTemp\n").unwrap();
-        assert_eq!(old.bluez_root, PathBuf::from("/var/lib/bluetooth"));
-        let new = parse_mount_config("/dev/disk/by-uuid/ABCD\n/mnt/blsTemp\n/tmp/bluez\n").unwrap();
-        assert_eq!(new.bluez_root, PathBuf::from("/tmp/bluez"));
+    fn config_requires_three_lines_and_direct_device_path() {
+        assert!(parse_mount_config("/dev/nvme0n1p3\n/mnt/blsTemp\n").is_err());
+        assert!(parse_mount_config("/dev/disk/by-uuid/ABCD\n/mnt/blsTemp\n/tmp/bluez\n").is_err());
         let direct = parse_mount_config("/dev/nvme0n1p3\n/mnt/blsTemp\n/tmp/bluez\n").unwrap();
         assert_eq!(direct.device, "/dev/nvme0n1p3");
         let unconfigured = parse_mount_config("\n/mnt/blsTemp\n/tmp/bluez\n").unwrap();
         assert!(unconfigured.device.is_empty());
-        assert!(parse_mount_config("/dev/disk/by-uuid/ABCD\n/mnt/blsTemp\nrelative\n").is_err());
-    }
-
-    #[test]
-    fn registry_multiline_binary_and_qword() {
-        let text = "[HKEY_LOCAL_MACHINE\\SYSTEM\\ControlSet001\\Services\\BTHPORT\\Parameters\\Keys\\aabbccddeeff\\001122334455]\r\n\
-                    \"LTK\"=hex:00,11,22,33,44,55,66,77,\\\r\n\
-                      88,99,aa,bb,cc,dd,ee,ff\r\n\
-                    \"ERand\"=hex(b):01,02,03,04,05,06,07,08\r\n\
-                    \"EDIV\"=dword:00001234\r\n";
-        let reg = parse_reg(text).unwrap();
-        let vals = reg.values().next().unwrap();
-        assert_eq!(bytes(vals, "LTK", 16).unwrap()[15], 0xff);
-        assert_eq!(
-            u64::from_le_bytes(bytes(vals, "ERand", 8).unwrap().try_into().unwrap()),
-            0x0807060504030201
-        );
-        assert_eq!(dword(vals, "EDIV"), Some(0x1234));
+        assert!(parse_mount_config("/dev/nvme0n1p3\n/mnt/blsTemp\nrelative\n").is_err());
     }
 
     #[test]

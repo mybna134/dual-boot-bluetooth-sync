@@ -1,0 +1,1 @@
+`ntreg.c` and `ntreg.h` come from [rescatux/chntpw](https://github.com/rescatux/chntpw), commit `0ec5c9cdf7a6855ca0c58e1fc01e2e15b2afa46b` (upstream ntreg by Petter Nordahl-Hagen). They are used unmodified and licensed under LGPL 2.1; see `LGPL.txt`. The build compiles them into `bls` through `src/ntreg_bridge.c`.

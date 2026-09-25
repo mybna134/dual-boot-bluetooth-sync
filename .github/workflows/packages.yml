@@ -26,7 +26,7 @@ jobs:
       - name: Build DEB, RPM, release archive, and AUR recipe
         id: build
         run: |
-          version="$(date -u +%Y%m%d%H%M%S).${GITHUB_RUN_NUMBER}"
+          version="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short=12 "$GITHUB_SHA")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           BLS_PACKAGE_VERSION="$version" scripts/package.sh "$GITHUB_REPOSITORY"
       - name: Upload packages
