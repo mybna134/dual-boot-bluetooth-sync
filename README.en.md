@@ -2,6 +2,7 @@
   <h1>Dual Boot Bluetooth Sync</h1>
   <a href="https://github.com/mybna134/dual-boot-bluetooth-sync/releases/latest"><img src="https://img.shields.io/github/v/release/mybna134/dual-boot-bluetooth-sync?style=for-the-badge&label=Latest%20Release&logo=github" alt="Latest release"></a>
   <a href="https://github.com/mybna134/dual-boot-bluetooth-sync/actions/workflows/packages.yml"><img src="https://img.shields.io/github/actions/workflow/status/mybna134/dual-boot-bluetooth-sync/packages.yml?branch=main&style=for-the-badge&label=Build&logo=githubactions" alt="GitHub Actions build status"></a>
+  <a href="https://app.codecov.io/gh/mybna134/dual-boot-bluetooth-sync"><img src="https://codecov.io/gh/mybna134/dual-boot-bluetooth-sync/branch/main/graph/badge.svg" alt="Codecov coverage"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/mybna134/dual-boot-bluetooth-sync?style=for-the-badge&logo=github" alt="License"></a>
   <img src="https://img.shields.io/badge/Rust-Edition%202021-orange?style=for-the-badge&logo=rust" alt="Rust edition 2021">
   <img src="https://img.shields.io/badge/BlueZ-Required-blue?style=for-the-badge&logo=bluetooth" alt="BlueZ required">
@@ -86,6 +87,10 @@ cargo build --release
 ```
 
 The resulting program is at `target/release/bls`. To build distribution packages locally, use `scripts/package.sh OWNER/REPO`.
+
+### Coverage budget
+
+CI runs tests with `cargo-llvm-cov` and uploads the coverage report to [Codecov](https://app.codecov.io/gh/mybna134/dual-boot-bluetooth-sync). The project coverage target follows the baseline automatically, with a tolerance of at most a 1 percentage point drop. Keep coverage steady or improve it when adding code.
 
 ## Usage
 
