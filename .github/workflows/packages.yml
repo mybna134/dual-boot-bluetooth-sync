@@ -25,12 +25,23 @@ jobs:
         run: |
           rustup component add llvm-tools-preview
           cargo install cargo-llvm-cov --locked
+          cargo install cargo-nextest --locked
+      - name: Run tests and generate JUnit report
+        run: cargo nextest run --locked --profile ci
       - name: Test and generate coverage report
         run: cargo llvm-cov --locked --codecov --output-path codecov.json
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: ./codecov.json
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+      - name: Upload test results to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          report_type: test_results
+          files: ./target/nextest/ci/junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
       - name: Build DEB, RPM, release archive, and AUR recipe
